@@ -3,9 +3,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from LLMInference import LLMInference
 from IngestAudio import AudioIngestor
+from IngestDocs import DocumentIngestor
+from VectorStore import VectorStore
+import numpy as np
+import ollama
 
 app = FastAPI()
 audio_ingestor = AudioIngestor()
+doc_ingestor = DocumentIngestor()
+vector_store = VectorStore()
 
 app.add_middleware(
     CORSMiddleware,
@@ -127,29 +133,36 @@ async def generate_response(request: QueryRequest):
     return {"response": response_text}
 
 @app.post("/api/audio/digest")
-async def audio_digest(file : UploadFile = File(...)):
-    file_location = f"temp_{file.filename}"
+async def audio_digest(file: UploadFile = File(...), embedding_model: str = ...):
+    import os
+    from EmbedData import EmbeddingPipeline
+
+    if not file.filename:
+        return {"status": "error", "message": "No filename provided"}
+
+    filename = file.filename
+    file_location = f"temp_{filename}"
 
     with open(file_location, "wb") as f:
         content = await file.read()
         f.write(content)
-    
-    transcribe_result = audio_ingestor.transcribe(file_location)
 
-    prompt = f"""
+    try:
+        transcribe_result = audio_ingestor.transcribe(file_location)
+        text = str(transcribe_result["text"])
 
-    Summarize this file in bullet points
-    {transcribe_result["text"]}
+        prompt = f"Summarize this file in bullet points\n{text}"
+        summary = inference.generate(prompt=prompt)
 
+        # Embed transcription and store in vector store
+        embedding_pipeline = EmbeddingPipeline(embedding_model=embedding_model)
+        chunks, embeddings = embedding_pipeline.process_document(text, filename)
+        if len(chunks) > 0:
+            vector_store.add_embeddings(embeddings, chunks)
 
-    """
-
-    summary = inference.generate(prompt=prompt)
-
-    return{
-        "transcribe" : transcribe_result["text"],
-        "summary" : summary
-    }
+        return {"transcribe": text, "summary": summary}
+    finally:
+        os.remove(file_location)
 
 
 @app.get("/api/whisper/models")
@@ -234,4 +247,54 @@ async def delete_whisper_model(request: WhisperDeleteRequest):
         return {"status": "error", "message": str(e)}
 
 
+@app.post("/api/documents/ingest")
+async def ingest_document(file: UploadFile = File(...), embedding_model: str = ...):
+    try:
+        from EmbedData import EmbeddingPipeline
+        import tempfile
+        import os
+        
+        if not file.filename:
+            return {"status": "error", "message": "No filename provided"}
+        
+        filename = file.filename
+        embedding_pipeline = EmbeddingPipeline(embedding_model=embedding_model)
+        
+        with tempfile.NamedTemporaryFile(delete=False, suffix=filename) as tmp:
+            content = await file.read()
+            tmp.write(content)
+            tmp_path = tmp.name
+        
+        try:
+            text = ""
+            if filename.lower().endswith(('.txt', '.md')):
+                with open(tmp_path, 'r') as f:
+                    text = f.read()
+            elif filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif')):
+                text = doc_ingestor.perform_ocr(tmp_path)
+            else:
+                return {"status": "error", "message": f"Unsupported file type: {filename}"}
+            
+            if not text.strip():
+                return {"status": "error", "message": "No text extracted from document"}
+            
+            # Process document: chunk and embed
+            chunks, embeddings = embedding_pipeline.process_document(text, filename)
+            
+            if len(chunks) == 0:
+                return {"status": "error", "message": "No chunks created from document"}
+            
+            # Add to vector store
+            vector_store.add_embeddings(embeddings, chunks)
+            
+            return {
+                "status": "success",
+                "message": f"Document '{filename}' ingested successfully",
+                "chunks_created": len(chunks),
+                "doc_id": chunks[0]['doc_id'] if chunks else None
+            }
+        finally:
+            os.unlink(tmp_path)
     
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
