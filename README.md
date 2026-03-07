@@ -2,7 +2,9 @@
 
 Neo is a self-hostable RAG and LLM inference platform. Run it locally, keep your data private, and chat with your files using any model you want.
 
----
+> [!WARNING]
+> Neo is under active development. You may run into bugs, rough edges, or breaking changes along the way.
+
 
 ## Getting Started
 
@@ -14,7 +16,7 @@ Neo is a self-hostable RAG and LLM inference platform. Run it locally, keep your
 ollama serve
 ```
 
-> [!WARNING]
+> [!NOTE]
 > Neo uses Ollama to run all LLMs and embedding models. Running Ollama natively (outside Docker) means it can take full advantage of your hardware — Metal on Apple Silicon Macs, CUDA on NVIDIA GPUs, or whatever your device supports. This is especially important on ARM-based machines like M-series MacBooks where Metal acceleration can have compatibility issues inside containers, so running Ollama directly on the host gives you the best performance across all devices.
 
 **2. Start Neo**
@@ -30,7 +32,6 @@ docker compose up
 
 Your chat history, vector indices, and Whisper models are persisted across restarts via Docker volumes.
 
----
 
 ### Option 2 — Run locally
 
@@ -57,8 +58,6 @@ npm install
 npm run dev
 ```
 
----
-
 ## What You Can Do
 
 ### Chat
@@ -81,26 +80,12 @@ Supported file types:
 
 You can also drag in an entire folder and Neo will ingest everything inside it.
 
-### Model Management
-Neo uses 4 model slots you can configure from the UI:
-
-| Slot | What it does |
-|---|---|
-| LLM | Text generation — any Ollama model |
-| Embed | Turns text into vectors for search |
-| OCR | Reads text from images and scanned PDFs |
-| ASR | Transcribes audio and video (Whisper) |
-
-From the model panel you can pull new models from Ollama, mount/unmount them, and delete them from disk. A live list of trending models is shown to help you get started.
-
----
 
 ## Under Development
 
 - **Image and video frame-by-frame visual captioning** using BLIP — coming soon
 - **Cloud provider support** (OpenAI, Anthropic, Self host in GCP, AWS etc) — coming soon
 
----
 
 ## Contributing
 
